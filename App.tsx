@@ -1,5 +1,5 @@
 // App.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import db from './src/database/db';
 interface Todo {
   id: number;
   title: string;
-  done: number; // 0 hoặc 1
+  done: number;
   created_at: number;
 }
 
@@ -31,6 +31,7 @@ function TodoListScreen() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState(''); // 🔍 Search text
 
   // Modal thêm & sửa
   const [showModal, setShowModal] = useState(false);
@@ -38,7 +39,7 @@ function TodoListScreen() {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
 
   // 📦 Load todos từ SQLite
-  const loadTodos = () => {
+  const loadTodos = useCallback(() => {
     try {
       const data = db.getAllSync<Todo>('SELECT * FROM todos ORDER BY id DESC;');
       setTodos(data);
@@ -48,11 +49,11 @@ function TodoListScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadTodos();
-  }, []);
+  }, [loadTodos]);
 
   // 🌀 Refresh
   const onRefresh = () => {
@@ -61,7 +62,7 @@ function TodoListScreen() {
   };
 
   // ➕ Thêm mới Todo
-  const handleAddTodo = () => {
+  const handleAddTodo = useCallback(() => {
     if (!newTitle.trim()) {
       Alert.alert('Cảnh báo', 'Tiêu đề không được để trống!');
       return;
@@ -79,10 +80,10 @@ function TodoListScreen() {
       console.error('Lỗi khi thêm todo:', err);
       Alert.alert('Lỗi', 'Không thể thêm công việc!');
     }
-  };
+  }, [newTitle, loadTodos]);
 
   // ✏️ Sửa Todo
-  const handleEditTodo = () => {
+  const handleEditTodo = useCallback(() => {
     if (!newTitle.trim()) {
       Alert.alert('Cảnh báo', 'Tiêu đề không được để trống!');
       return;
@@ -102,23 +103,29 @@ function TodoListScreen() {
       console.error('Lỗi khi sửa todo:', err);
       Alert.alert('Lỗi', 'Không thể cập nhật công việc!');
     }
-  };
+  }, [newTitle, editingTodo, loadTodos]);
 
   // ✅ Toggle done state
-  const toggleDone = (todo: Todo) => {
-    try {
-      const newDone = todo.done === 1 ? 0 : 1;
-      db.runSync('UPDATE todos SET done = ? WHERE id = ?;', [newDone, todo.id]);
-      setTodos((prev) =>
-        prev.map((t) => (t.id === todo.id ? { ...t, done: newDone } : t))
-      );
-    } catch (err) {
-      console.error('Lỗi toggle done:', err);
-    }
-  };
+  const toggleDone = useCallback(
+    (todo: Todo) => {
+      try {
+        const newDone = todo.done === 1 ? 0 : 1;
+        db.runSync('UPDATE todos SET done = ? WHERE id = ?;', [
+          newDone,
+          todo.id,
+        ]);
+        setTodos((prev) =>
+          prev.map((t) => (t.id === todo.id ? { ...t, done: newDone } : t))
+        );
+      } catch (err) {
+        console.error('Lỗi toggle done:', err);
+      }
+    },
+    [setTodos]
+  );
 
   // 🗑 Xóa Todo có xác nhận
-  const handleDeleteTodo = (todo: Todo) => {
+  const handleDeleteTodo = useCallback((todo: Todo) => {
     Alert.alert(
       'Xác nhận xóa',
       `Bạn có chắc muốn xóa công việc:\n"${todo.title}"?`,
@@ -139,44 +146,54 @@ function TodoListScreen() {
         },
       ]
     );
-  };
+  }, []);
+
+  // 🔍 Lọc danh sách theo search (useMemo để tránh render lại)
+  const filteredTodos = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return todos;
+    return todos.filter((t) => t.title.toLowerCase().includes(term));
+  }, [search, todos]);
 
   // 🧱 Render từng item
-  const renderItem = ({ item }: { item: Todo }) => (
-    <Pressable
-      onPress={() => toggleDone(item)}
-      style={[styles.todoItem, item.done ? styles.todoItemDone : null]}
-    >
-      <View style={styles.todoContent}>
-        <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
-          {item.title}
-        </Text>
+  const renderItem = useCallback(
+    ({ item }: { item: Todo }) => (
+      <Pressable
+        onPress={() => toggleDone(item)}
+        style={[styles.todoItem, item.done ? styles.todoItemDone : null]}
+      >
+        <View style={styles.todoContent}>
+          <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
+            {item.title}
+          </Text>
 
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.editButton}
-            onPress={() => {
-              setEditingTodo(item);
-              setNewTitle(item.title);
-              setShowModal(true);
-            }}
-          >
-            <Text style={styles.editButtonText}>✎</Text>
-          </Pressable>
+          <View style={styles.actions}>
+            <Pressable
+              style={styles.editButton}
+              onPress={() => {
+                setEditingTodo(item);
+                setNewTitle(item.title);
+                setShowModal(true);
+              }}
+            >
+              <Text style={styles.editButtonText}>✎</Text>
+            </Pressable>
 
-          <Pressable
-            style={styles.deleteButton}
-            onPress={() => handleDeleteTodo(item)}
-          >
-            <Text style={styles.deleteButtonText}>🗑</Text>
-          </Pressable>
+            <Pressable
+              style={styles.deleteButton}
+              onPress={() => handleDeleteTodo(item)}
+            >
+              <Text style={styles.deleteButtonText}>🗑</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
 
-      <Text style={styles.todoDate}>
-        {new Date(item.created_at).toLocaleString('vi-VN')}
-      </Text>
-    </Pressable>
+        <Text style={styles.todoDate}>
+          {new Date(item.created_at).toLocaleString('vi-VN')}
+        </Text>
+      </Pressable>
+    ),
+    [toggleDone, handleDeleteTodo]
   );
 
   return (
@@ -198,16 +215,24 @@ function TodoListScreen() {
         </Pressable>
       </View>
 
+      {/* 🔍 Ô tìm kiếm */}
+      <TextInput
+        placeholder="Tìm kiếm công việc..."
+        style={styles.searchInput}
+        value={search}
+        onChangeText={setSearch}
+      />
+
       {/* 🔹 Danh sách */}
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" />
-      ) : todos.length === 0 ? (
+      ) : filteredTodos.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Chưa có việc nào</Text>
+          <Text style={styles.emptyText}>Không tìm thấy công việc nào</Text>
         </View>
       ) : (
         <FlatList
-          data={todos}
+          data={filteredTodos}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 8 }}
@@ -277,7 +302,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
     position: 'relative',
   },
   header: {
@@ -297,6 +322,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: { color: '#fff', fontSize: 24, lineHeight: 28 },
+  searchInput: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    marginBottom: 10,
+  },
   todoItem: {
     backgroundColor: '#fff',
     padding: 16,
