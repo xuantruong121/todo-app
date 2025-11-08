@@ -117,7 +117,31 @@ function TodoListScreen() {
     }
   };
 
-  // 🧱 Render item
+  // 🗑 Xóa Todo có xác nhận
+  const handleDeleteTodo = (todo: Todo) => {
+    Alert.alert(
+      'Xác nhận xóa',
+      `Bạn có chắc muốn xóa công việc:\n"${todo.title}"?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              db.runSync('DELETE FROM todos WHERE id = ?;', [todo.id]);
+              setTodos((prev) => prev.filter((t) => t.id !== todo.id));
+            } catch (err) {
+              console.error('Lỗi khi xóa todo:', err);
+              Alert.alert('Lỗi', 'Không thể xóa công việc!');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 🧱 Render từng item
   const renderItem = ({ item }: { item: Todo }) => (
     <Pressable
       onPress={() => toggleDone(item)}
@@ -127,17 +151,28 @@ function TodoListScreen() {
         <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
           {item.title}
         </Text>
-        <Pressable
-          style={styles.editButton}
-          onPress={() => {
-            setEditingTodo(item);
-            setNewTitle(item.title);
-            setShowModal(true);
-          }}
-        >
-          <Text style={styles.editButtonText}>✎</Text>
-        </Pressable>
+
+        <View style={styles.actions}>
+          <Pressable
+            style={styles.editButton}
+            onPress={() => {
+              setEditingTodo(item);
+              setNewTitle(item.title);
+              setShowModal(true);
+            }}
+          >
+            <Text style={styles.editButtonText}>✎</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.deleteButton}
+            onPress={() => handleDeleteTodo(item)}
+          >
+            <Text style={styles.deleteButtonText}>🗑</Text>
+          </Pressable>
+        </View>
       </View>
+
       <Text style={styles.todoDate}>
         {new Date(item.created_at).toLocaleString('vi-VN')}
       </Text>
@@ -272,27 +307,30 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  todoItemDone: {
-    backgroundColor: '#e6f4ea',
-  },
+  todoItemDone: { backgroundColor: '#e6f4ea' },
   todoContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   todoTitle: { fontSize: 16, fontWeight: '600', color: '#333', flex: 1 },
-  done: {
-    textDecorationLine: 'line-through',
-    color: '#999',
-  },
+  done: { textDecorationLine: 'line-through', color: '#999' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   editButton: {
     backgroundColor: '#f1f3f5',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginLeft: 8,
   },
   editButtonText: { fontSize: 16, color: '#007AFF', fontWeight: '700' },
+  deleteButton: {
+    backgroundColor: '#ffe3e3',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 4,
+  },
+  deleteButtonText: { fontSize: 16, color: '#d32f2f', fontWeight: '700' },
   todoDate: { fontSize: 12, color: '#666', marginTop: 6 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 16, color: '#888' },
