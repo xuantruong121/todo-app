@@ -31,8 +31,11 @@ function TodoListScreen() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Modal thêm & sửa
   const [showModal, setShowModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
 
   // 📦 Load todos từ SQLite
   const loadTodos = () => {
@@ -51,7 +54,7 @@ function TodoListScreen() {
     loadTodos();
   }, []);
 
-  // 🌀 Refresh list
+  // 🌀 Refresh
   const onRefresh = () => {
     setRefreshing(true);
     loadTodos();
@@ -71,19 +74,41 @@ function TodoListScreen() {
       ]);
       setNewTitle('');
       setShowModal(false);
-      loadTodos(); // refresh lại list
+      loadTodos();
     } catch (err) {
       console.error('Lỗi khi thêm todo:', err);
       Alert.alert('Lỗi', 'Không thể thêm công việc!');
     }
   };
 
-  // ✅ Toggle done (0 ↔ 1)
+  // ✏️ Sửa Todo
+  const handleEditTodo = () => {
+    if (!newTitle.trim()) {
+      Alert.alert('Cảnh báo', 'Tiêu đề không được để trống!');
+      return;
+    }
+    if (!editingTodo) return;
+
+    try {
+      db.runSync('UPDATE todos SET title = ? WHERE id = ?;', [
+        newTitle.trim(),
+        editingTodo.id,
+      ]);
+      setEditingTodo(null);
+      setNewTitle('');
+      setShowModal(false);
+      loadTodos();
+    } catch (err) {
+      console.error('Lỗi khi sửa todo:', err);
+      Alert.alert('Lỗi', 'Không thể cập nhật công việc!');
+    }
+  };
+
+  // ✅ Toggle done state
   const toggleDone = (todo: Todo) => {
     try {
       const newDone = todo.done === 1 ? 0 : 1;
       db.runSync('UPDATE todos SET done = ? WHERE id = ?;', [newDone, todo.id]);
-      // cập nhật ngay trong state
       setTodos((prev) =>
         prev.map((t) => (t.id === todo.id ? { ...t, done: newDone } : t))
       );
@@ -92,16 +117,27 @@ function TodoListScreen() {
     }
   };
 
-  // 🧱 Render từng item
+  // 🧱 Render item
   const renderItem = ({ item }: { item: Todo }) => (
     <Pressable
       onPress={() => toggleDone(item)}
       style={[styles.todoItem, item.done ? styles.todoItemDone : null]}
     >
-      {/* ✅ fix lỗi TypeScript bằng điều kiện ternary */}
-      <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
-        {item.title}
-      </Text>
+      <View style={styles.todoContent}>
+        <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
+          {item.title}
+        </Text>
+        <Pressable
+          style={styles.editButton}
+          onPress={() => {
+            setEditingTodo(item);
+            setNewTitle(item.title);
+            setShowModal(true);
+          }}
+        >
+          <Text style={styles.editButtonText}>✎</Text>
+        </Pressable>
+      </View>
       <Text style={styles.todoDate}>
         {new Date(item.created_at).toLocaleString('vi-VN')}
       </Text>
@@ -117,7 +153,11 @@ function TodoListScreen() {
         <Text style={styles.header}>Danh sách công việc</Text>
         <Pressable
           style={styles.addButton}
-          onPress={() => setShowModal(true)}
+          onPress={() => {
+            setEditingTodo(null);
+            setNewTitle('');
+            setShowModal(true);
+          }}
         >
           <Text style={styles.addButtonText}>＋</Text>
         </Pressable>
@@ -142,11 +182,13 @@ function TodoListScreen() {
         />
       )}
 
-      {/* 🔹 Modal thêm mới */}
+      {/* 🔹 Modal thêm/sửa */}
       <Modal visible={showModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Thêm công việc mới</Text>
+            <Text style={styles.modalTitle}>
+              {editingTodo ? 'Chỉnh sửa công việc' : 'Thêm công việc mới'}
+            </Text>
             <TextInput
               style={styles.input}
               placeholder="Nhập tiêu đề công việc..."
@@ -159,18 +201,19 @@ function TodoListScreen() {
                 onPress={() => {
                   setShowModal(false);
                   setNewTitle('');
+                  setEditingTodo(null);
                 }}
               >
                 <Text style={styles.modalButtonText}>Hủy</Text>
               </Pressable>
               <Pressable
                 style={[styles.modalButton, styles.saveButton]}
-                onPress={handleAddTodo}
+                onPress={editingTodo ? handleEditTodo : handleAddTodo}
               >
                 <Text
                   style={[styles.modalButtonText, { color: '#fff' }]}
                 >
-                  Lưu
+                  {editingTodo ? 'Lưu thay đổi' : 'Thêm mới'}
                 </Text>
               </Pressable>
             </View>
@@ -181,7 +224,6 @@ function TodoListScreen() {
   );
 }
 
-// Root app
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -190,7 +232,6 @@ export default function App() {
   );
 }
 
-// 🎨 Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -234,12 +275,25 @@ const styles = StyleSheet.create({
   todoItemDone: {
     backgroundColor: '#e6f4ea',
   },
-  todoTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
+  todoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  todoTitle: { fontSize: 16, fontWeight: '600', color: '#333', flex: 1 },
   done: {
     textDecorationLine: 'line-through',
     color: '#999',
   },
-  todoDate: { fontSize: 12, color: '#666', marginTop: 4 },
+  editButton: {
+    backgroundColor: '#f1f3f5',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
+  editButtonText: { fontSize: 16, color: '#007AFF', fontWeight: '700' },
+  todoDate: { fontSize: 12, color: '#666', marginTop: 6 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 16, color: '#888' },
   modalOverlay: {
