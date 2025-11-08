@@ -22,7 +22,7 @@ import db from './src/database/db';
 interface Todo {
   id: number;
   title: string;
-  done: number;
+  done: number; // 0 hoặc 1
   created_at: number;
 }
 
@@ -51,7 +51,7 @@ function TodoListScreen() {
     loadTodos();
   }, []);
 
-  // 🌀 Refresh
+  // 🌀 Refresh list
   const onRefresh = () => {
     setRefreshing(true);
     loadTodos();
@@ -71,23 +71,41 @@ function TodoListScreen() {
       ]);
       setNewTitle('');
       setShowModal(false);
-      loadTodos(); // refresh list ngay
+      loadTodos(); // refresh lại list
     } catch (err) {
       console.error('Lỗi khi thêm todo:', err);
       Alert.alert('Lỗi', 'Không thể thêm công việc!');
     }
   };
 
-  // 🧱 Render item
+  // ✅ Toggle done (0 ↔ 1)
+  const toggleDone = (todo: Todo) => {
+    try {
+      const newDone = todo.done === 1 ? 0 : 1;
+      db.runSync('UPDATE todos SET done = ? WHERE id = ?;', [newDone, todo.id]);
+      // cập nhật ngay trong state
+      setTodos((prev) =>
+        prev.map((t) => (t.id === todo.id ? { ...t, done: newDone } : t))
+      );
+    } catch (err) {
+      console.error('Lỗi toggle done:', err);
+    }
+  };
+
+  // 🧱 Render từng item
   const renderItem = ({ item }: { item: Todo }) => (
-    <View style={styles.todoItem}>
+    <Pressable
+      onPress={() => toggleDone(item)}
+      style={[styles.todoItem, item.done ? styles.todoItemDone : null]}
+    >
+      {/* ✅ fix lỗi TypeScript bằng điều kiện ternary */}
       <Text style={[styles.todoTitle, item.done ? styles.done : null]}>
         {item.title}
       </Text>
       <Text style={styles.todoDate}>
         {new Date(item.created_at).toLocaleString('vi-VN')}
       </Text>
-    </View>
+    </Pressable>
   );
 
   return (
@@ -97,7 +115,10 @@ function TodoListScreen() {
       {/* 🔹 Header */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Danh sách công việc</Text>
-        <Pressable style={styles.addButton} onPress={() => setShowModal(true)}>
+        <Pressable
+          style={styles.addButton}
+          onPress={() => setShowModal(true)}
+        >
           <Text style={styles.addButtonText}>＋</Text>
         </Pressable>
       </View>
@@ -146,7 +167,9 @@ function TodoListScreen() {
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleAddTodo}
               >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>
+                <Text
+                  style={[styles.modalButtonText, { color: '#fff' }]}
+                >
                   Lưu
                 </Text>
               </Pressable>
@@ -158,7 +181,7 @@ function TodoListScreen() {
   );
 }
 
-// ✅ App chính có SafeAreaProvider
+// Root app
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -167,6 +190,7 @@ export default function App() {
   );
 }
 
+// 🎨 Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -207,8 +231,14 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
+  todoItemDone: {
+    backgroundColor: '#e6f4ea',
+  },
   todoTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  done: { textDecorationLine: 'line-through', color: '#999' },
+  done: {
+    textDecorationLine: 'line-through',
+    color: '#999',
+  },
   todoDate: { fontSize: 12, color: '#666', marginTop: 4 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 16, color: '#888' },
@@ -250,6 +280,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: { backgroundColor: '#e9ecef', marginRight: 8 },
-    saveButton: { backgroundColor: '#007AFF', marginLeft: 8 },
-    modalButtonText: { fontSize: 16, fontWeight: '600' },
+  saveButton: { backgroundColor: '#007AFF', marginLeft: 8 },
+  modalButtonText: { fontSize: 16, fontWeight: '600' },
 });
